@@ -2,6 +2,7 @@ const express = require("express");
 const path = require("path");
 const session = require("express-session");
 const passport = require("passport");
+const bcrypt = require("bcryptjs");
 const LocalStrategy = require("passport-local").Strategy;
 const mongoose = require("mongoose");
 const Schema = mongoose.Schema;
@@ -39,8 +40,11 @@ passport.use(
       if (!user) {
         return done(null, false, { message: "no username found" });
       }
-      if (user.password != password) {
-        return done(null, false, { message: "password incorrect" });
+      // compare hashed pw
+      const match = await bcrypt.compare(password, user.password);
+      if (!match) {
+        // passowrd does not match
+        return done(null, false, message("incorrect password"));
       }
       return done(null, user);
     } catch (err) {
@@ -71,17 +75,19 @@ app.get("/", (req, res) => res.render("index", { user: req.user }));
 app.get("/sign-up", (req, res) => res.render("sign-up-form"));
 
 app.post("/sign-up", async (req, res, next) => {
-  try {
-    const user = new User({
-      username: req.body.username,
-      password: req.body.password,
-    });
-    const result = await user.save();
-    res.locals.currentUser = user;
-    res.redirect("/");
-  } catch (err) {
-    return next(err);
-  }
+  bcrypt.hash(req.body.password, 10, async (err, hashedPassword) => {
+    try {
+      const user = new User({
+        username: req.body.username,
+        password: hashedPassword,
+      });
+      const result = await user.save();
+      res.locals.currentUser = user;
+      res.redirect("/");
+    } catch (err) {
+      return next(err);
+    }
+  });
 });
 
 app.get("/log-out", (req, res, next) => {
@@ -97,7 +103,7 @@ app.post(
   "/log-in",
   passport.authenticate("local", {
     successRedirect: "/",
-    failureRedirect: "/",
+    failureRedirect: "/oops",
   })
 );
 
